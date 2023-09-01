@@ -14,12 +14,15 @@ import {
 	CompletionItemKind,
 	TextDocumentPositionParams,
 	TextDocumentSyncKind,
-	InitializeResult
+	InitializeResult,
+	ColorInformation,
+	Range,
+	Color,
+	ColorPresentation,
+	TextEdit,
 } from 'vscode-languageserver/node';
 
-import {
-	TextDocument
-} from 'vscode-languageserver-textdocument';
+import { TextDocument } from 'vscode-languageserver-textdocument';
 
 // Create a connection for the server, using Node's IPC as a transport.
 // Also include all preview / proposed LSP features.
@@ -51,18 +54,19 @@ connection.onInitialize((params: InitializeParams) => {
 
 	const result: InitializeResult = {
 		capabilities: {
-			textDocumentSync: TextDocumentSyncKind.Incremental,
-			// Tell the client that this server supports code completion.
-			completionProvider: {
-				resolveProvider: true
-			}
-		}
+			// textDocumentSync: TextDocumentSyncKind.Incremental,
+			// // Tell the client that this server supports code completion.
+			// completionProvider: {
+			// 	resolveProvider: true
+			// },
+			colorProvider: true,
+		},
 	};
 	if (hasWorkspaceFolderCapability) {
 		result.capabilities.workspace = {
 			workspaceFolders: {
-				supported: true
-			}
+				supported: true,
+			},
 		};
 	}
 	return result;
@@ -74,7 +78,7 @@ connection.onInitialized(() => {
 		connection.client.register(DidChangeConfigurationNotification.type, undefined);
 	}
 	if (hasWorkspaceFolderCapability) {
-		connection.workspace.onDidChangeWorkspaceFolders(_event => {
+		connection.workspace.onDidChangeWorkspaceFolders((_event) => {
 			connection.console.log('Workspace folder change event received.');
 		});
 	}
@@ -94,7 +98,7 @@ let globalSettings: ExampleSettings = defaultSettings;
 // Cache the settings of all open documents
 const documentSettings: Map<string, Thenable<ExampleSettings>> = new Map();
 
-connection.onDidChangeConfiguration(change => {
+connection.onDidChangeConfiguration((change) => {
 	if (hasConfigurationCapability) {
 		// Reset all cached document settings
 		documentSettings.clear();
@@ -108,6 +112,50 @@ connection.onDidChangeConfiguration(change => {
 	documents.all().forEach(validateTextDocument);
 });
 
+const colorRegExp = /#([0-9A-Fa-f]{6})/g;
+connection.onDocumentColor((params) => {
+	const colorInfos: ColorInformation[] = [];
+	const textDocument = params.textDocument;
+	const document = documents.get(textDocument.uri);
+	if (document) {
+		const text = document.getText();
+
+		colorRegExp.lastIndex = 0;
+		let match;
+		while ((match = colorRegExp.exec(text)) != null) {
+			const offset = match.index;
+			const length = match[0].length;
+
+			const range = Range.create(
+				document.positionAt(offset),
+				document.positionAt(offset + length)
+			);
+			const color = parseColor(text, offset);
+			colorInfos.push({ color, range });
+		}
+	}
+
+	return colorInfos;
+});
+
+connection.onColorPresentation(({ color, range }) => {
+	const result: ColorPresentation[] = [];
+	const red256 = Math.round(color.red * 255),
+		green256 = Math.round(color.green * 255),
+		blue256 = Math.round(color.blue * 255);
+
+	function toTwoDigitHex(n: number): string {
+		const r = n.toString(16);
+		return r.length !== 2 ? '0' + r : r;
+	}
+
+	const label = `#${toTwoDigitHex(red256)}${toTwoDigitHex(green256)}${toTwoDigitHex(
+		blue256
+	)}`;
+	result.push({ label: label, textEdit: TextEdit.replace(range, label) });
+
+	return result;
+});
 function getDocumentSettings(resource: string): Thenable<ExampleSettings> {
 	if (!hasConfigurationCapability) {
 		return Promise.resolve(globalSettings);
@@ -116,7 +164,7 @@ function getDocumentSettings(resource: string): Thenable<ExampleSettings> {
 	if (!result) {
 		result = connection.workspace.getConfiguration({
 			scopeUri: resource,
-			section: 'languageServerExample'
+			section: 'languageServerExample',
 		});
 		documentSettings.set(resource, result);
 	}
@@ -124,13 +172,13 @@ function getDocumentSettings(resource: string): Thenable<ExampleSettings> {
 }
 
 // Only keep settings for open documents
-documents.onDidClose(e => {
+documents.onDidClose((e) => {
 	documentSettings.delete(e.document.uri);
 });
 
 // The content of a text document has changed. This event is emitted
 // when the text document first opened or when its content has changed.
-documents.onDidChangeContent(change => {
+documents.onDidChangeContent((change) => {
 	validateTextDocument(change.document);
 });
 
@@ -151,27 +199,27 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
 			severity: DiagnosticSeverity.Warning,
 			range: {
 				start: textDocument.positionAt(m.index),
-				end: textDocument.positionAt(m.index + m[0].length)
+				end: textDocument.positionAt(m.index + m[0].length),
 			},
 			message: `${m[0]} is all uppercase.`,
-			source: 'ex'
+			source: 'ex',
 		};
 		if (hasDiagnosticRelatedInformationCapability) {
 			diagnostic.relatedInformation = [
 				{
 					location: {
 						uri: textDocument.uri,
-						range: Object.assign({}, diagnostic.range)
+						range: Object.assign({}, diagnostic.range),
 					},
-					message: 'Spelling matters'
+					message: 'Spelling matters',
 				},
 				{
 					location: {
 						uri: textDocument.uri,
-						range: Object.assign({}, diagnostic.range)
+						range: Object.assign({}, diagnostic.range),
 					},
-					message: 'Particularly for names'
-				}
+					message: 'Particularly for names',
+				},
 			];
 		}
 		diagnostics.push(diagnostic);
@@ -181,7 +229,7 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
 	connection.sendDiagnostics({ uri: textDocument.uri, diagnostics });
 }
 
-connection.onDidChangeWatchedFiles(_change => {
+connection.onDidChangeWatchedFiles((_change) => {
 	// Monitored files have change in VSCode
 	connection.console.log('We received an file change event');
 });
@@ -196,31 +244,29 @@ connection.onCompletion(
 			{
 				label: 'TypeScript',
 				kind: CompletionItemKind.Text,
-				data: 1
+				data: 1,
 			},
 			{
 				label: 'JavaScript',
 				kind: CompletionItemKind.Text,
-				data: 2
-			}
+				data: 2,
+			},
 		];
 	}
 );
 
 // This handler resolves additional information for the item selected in
 // the completion list.
-connection.onCompletionResolve(
-	(item: CompletionItem): CompletionItem => {
-		if (item.data === 1) {
-			item.detail = 'TypeScript details';
-			item.documentation = 'TypeScript documentation';
-		} else if (item.data === 2) {
-			item.detail = 'JavaScript details';
-			item.documentation = 'JavaScript documentation';
-		}
-		return item;
+connection.onCompletionResolve((item: CompletionItem): CompletionItem => {
+	if (item.data === 1) {
+		item.detail = 'TypeScript details';
+		item.documentation = 'TypeScript documentation';
+	} else if (item.data === 2) {
+		item.detail = 'JavaScript details';
+		item.documentation = 'JavaScript documentation';
 	}
-);
+	return item;
+});
 
 // Make the text document manager listen on the connection
 // for open, change and close text document events
@@ -228,3 +274,43 @@ documents.listen(connection);
 
 // Listen on the connection
 connection.listen();
+
+const enum CharCode {
+	Digit0 = 48,
+	Digit9 = 57,
+
+	A = 65,
+	F = 70,
+
+	a = 97,
+	f = 102,
+}
+
+function parseHexDigit(charCode: CharCode): number {
+	if (charCode >= CharCode.Digit0 && charCode <= CharCode.Digit9) {
+		return charCode - CharCode.Digit0;
+	}
+	if (charCode >= CharCode.A && charCode <= CharCode.F) {
+		return charCode - CharCode.A + 10;
+	}
+	if (charCode >= CharCode.a && charCode <= CharCode.f) {
+		return charCode - CharCode.a + 10;
+	}
+	return 0;
+}
+
+function parseColor(content: string, offset: number): Color {
+	const r =
+		(16 * parseHexDigit(content.charCodeAt(offset + 1)) +
+			parseHexDigit(content.charCodeAt(offset + 2))) /
+		255;
+	const g =
+		(16 * parseHexDigit(content.charCodeAt(offset + 3)) +
+			parseHexDigit(content.charCodeAt(offset + 4))) /
+		255;
+	const b =
+		(16 * parseHexDigit(content.charCodeAt(offset + 5)) +
+			parseHexDigit(content.charCodeAt(offset + 6))) /
+		255;
+	return Color.create(r, g, b, 1);
+}

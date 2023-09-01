@@ -13,6 +13,11 @@ import {
 	Position,
 	TextDocument,
 	languages,
+	DocumentColorProvider,
+	ColorInformation,
+	ColorPresentation,
+	Range,
+	Color,
 } from 'vscode';
 
 import {
@@ -24,13 +29,21 @@ import {
 
 let client: LanguageClient;
 
-class GoHoverProvider implements HoverProvider {
-	public provideHover(
+class GoColorProvider implements DocumentColorProvider {
+	public provideDocumentColors(
 		document: TextDocument,
-		position: Position,
 		token: CancellationToken
-	): Thenable<Hover> {
-		return Promise.resolve('' as any);
+	): Thenable<ColorInformation[]> {
+		return Promise.resolve([
+			new ColorInformation(new Range(1, 1, 5, 5), new Color(255, 100, 255, 255)),
+		]);
+	}
+	public provideColorPresentations(
+		color: Color,
+		context: { document: TextDocument; range: Range },
+		token: CancellationToken
+	): Thenable<ColorPresentation[]> {
+		return Promise.resolve([new ColorPresentation('fuck')]);
 	}
 }
 
@@ -41,6 +54,10 @@ export function activate(context: ExtensionContext) {
 	// context.subscriptions.push(
 	// 	languages.registerHoverProvider('GO_MODE', new GoHoverProvider())
 	// );
+
+	context.subscriptions.push(
+		languages.registerColorProvider('test', new GoColorProvider())
+	);
 	// If the extension is launched in debug mode then the debug server options are used
 	// Otherwise the run options are used
 	const serverOptions: ServerOptions = {
@@ -54,7 +71,7 @@ export function activate(context: ExtensionContext) {
 	// Options to control the language client
 	const clientOptions: LanguageClientOptions = {
 		// Register the server for plain text documents
-		documentSelector: [{ scheme: 'file', language: 'plaintext' }],
+		documentSelector: [{ scheme: 'file', language: 'less' }],
 		synchronize: {
 			// Notify the server about file changes to '.clientrc files contained in the workspace
 			fileEvents: workspace.createFileSystemWatcher('**/.clientrc'),
