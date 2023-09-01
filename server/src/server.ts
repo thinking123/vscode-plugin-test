@@ -149,9 +149,11 @@ connection.onColorPresentation(({ color, range }) => {
 		return r.length !== 2 ? '0' + r : r;
 	}
 
-	const label = `#${toTwoDigitHex(red256)}${toTwoDigitHex(green256)}${toTwoDigitHex(
-		blue256
-	)}`;
+	// const label = `#${toTwoDigitHex(red256)}${toTwoDigitHex(green256)}${toTwoDigitHex(
+	// 	blue256
+	// )}`;
+
+	const label = `#fuckyou`;
 	result.push({ label: label, textEdit: TextEdit.replace(range, label) });
 
 	return result;
@@ -312,5 +314,6 @@ function parseColor(content: string, offset: number): Color {
 		(16 * parseHexDigit(content.charCodeAt(offset + 5)) +
 			parseHexDigit(content.charCodeAt(offset + 6))) /
 		255;
-	return Color.create(r, g, b, 1);
+	// return Color.create(r, g, b, 1);
+	return Color.create(52, 64, 235, 1);
 }
